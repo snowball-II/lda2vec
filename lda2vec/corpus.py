@@ -2,11 +2,13 @@ from collections import defaultdict
 import numpy as np
 import difflib
 import pandas as pd
+from tqdm import tqdm
+# sys.path.append('/Users/zequn-li/snowball_II/pyxDamerauLevenshtein/dist/pyxDamerauLevenshtein-1.5-py3.6-macosx-10.12-x86_64.egg')
 
-try:
-    from pyxdameraulevenshtein import damerau_levenshtein_distance_withNPArray
-except ImportError:
-    pass
+# try:
+from pyxdameraulevenshtein import damerau_levenshtein_distance_ndarray
+# except ImportError:
+#     pass
 
 
 class Corpus():
@@ -101,10 +103,12 @@ class Corpus():
         order = np.argsort(counts)[::-1].astype('int32')
         keys, counts = keys[order], counts[order]
         # Add in the specials as a prefix to the other keys
-        specials = np.sort(self.specials.values())
+        '''
+        specials = np.sort(list(self.specials.values()))
         keys = np.concatenate((specials, keys))
         empty = np.zeros(len(specials), dtype='int32')
         counts = np.concatenate((empty, counts))
+        '''
         n_keys = keys.shape[0]
         assert counts.min() >= 0
         return keys, counts, n_keys
@@ -158,10 +162,12 @@ class Corpus():
                                  zip(self.keys_loose, self.keys_compact)}
         self.compact_to_loose = {c: l for l, c in
                                  self.loose_to_compact.items()}
+        '''
         self.specials_to_compact = {s: self.loose_to_compact[i]
                                     for s, i in self.specials.items()}
-        self.compact_to_special = {c: s for c, s in
+        self.compact_to_special = {c: s for s, c in
                                    self.specials_to_compact.items()}
+        '''
         self._finalized = True
 
     @property
@@ -223,20 +229,34 @@ class Corpus():
         """
         self._check_finalized()
         ret = words_compact.copy()
+        '''
         if min_replacement is None:
             min_replacement = self.specials_to_compact['out_of_vocabulary']
         if max_replacement is None:
             max_replacement = self.specials_to_compact['out_of_vocabulary']
+        '''
+        if min_replacement is None:
+            min_replacement = self.specials['out_of_vocabulary']
+        if max_replacement is None:
+            max_replacement = self.specials['out_of_vocabulary']
+        '''
         not_specials = np.ones(self.keys_counts.shape[0], dtype='bool')
         not_specials[:self.n_specials] = False
+        '''
         if min_count:
             # Find first index with count less than min_count
+            '''
             min_idx = np.argmax(not_specials & (self.keys_counts < min_count))
+            '''
+            min_idx = np.argmax(self.keys_counts < min_count)
             # Replace all indices greater than min_idx
             ret[ret > min_idx] = min_replacement
         if max_count:
             # Find first index with count less than max_count
+            '''
             max_idx = np.argmax(not_specials & (self.keys_counts < max_count))
+            '''
+            max_idx = np.argmax(self.keys_counts < max_count)
             # Replace all indices less than max_idx
             ret[ret < max_idx] = max_replacement
         return ret
@@ -333,12 +353,17 @@ class Corpus():
         uniques = np.unique(word_loose)
         # Find the out of vocab indices
         oov = np.setdiff1d(uniques, keys, assume_unique=True)
+        '''
         oov_token = self.specials_to_compact['out_of_vocabulary']
+        '''
+        oov_token = self.specials['out_of_vocabulary']
         keys = np.concatenate((keys, oov))
         reps = np.concatenate((reps, np.zeros_like(oov) + oov_token))
         compact = fast_replace(word_loose, keys, reps)
+        '''
         msg = "Error: all compact indices should be non-negative"
         assert compact.min() >= 0, msg
+        '''
         return compact
 
     def to_loose(self, word_compact):
@@ -415,7 +440,10 @@ class Corpus():
         self._check_finalized()
         n_docs = word_compact.shape[0]
         max_length = word_compact.shape[1]
-        idx = word_compact > self.n_specials
+        '''
+        idx = word_compact >= self.n_specials
+        '''
+        idx = word_compact >= 0
         components_raveled = []
         msg = "Length of each component must much `word_compact` size"
         for component in components:
@@ -531,8 +559,8 @@ class Corpus():
         True
         """
         n_words = len(self.compact_to_loose)
-        from gensim.models.word2vec import Word2Vec
-        model = Word2Vec.load_word2vec_format(filename, binary=True)
+        from gensim.models import KeyedVectors
+        model = KeyedVectors.load_word2vec_format(filename, binary=True)
         n_dim = model.syn0.shape[1]
         data = np.random.normal(size=(n_words, n_dim)).astype('float32')
         data -= data.mean()
@@ -545,14 +573,17 @@ class Corpus():
         keys_raw = model.vocab.keys()
         keys = [s.encode('ascii', 'ignore') for s in keys_raw]
         lens = [len(s) for s in model.vocab.keys()]
-        choices = np.array(keys, dtype='S')
+        choices = np.array(keys, dtype=str)
         lengths = np.array(lens, dtype='int32')
         s, f = 0, 0
         rep0 = lambda w: w
         rep1 = lambda w: w.replace(' ', '_')
         rep2 = lambda w: w.title().replace(' ', '_')
         reps = [rep0, rep1, rep2]
-        for compact in np.arange(top):
+        '''
+        for compact in tqdm(np.arange(self.n_specials, min(top, n_words)), unit=''):
+        '''
+        for compact in tqdm(np.arange(min(top, n_words)), unit=''):
             loose = self.compact_to_loose.get(compact, None)
             if loose is None:
                 continue
@@ -566,19 +597,19 @@ class Corpus():
                 if clean in model.vocab:
                     vector = model[clean]
                     break
-            if vector is None:
-                try:
-                    word = unicode(word)
-                    idx = lengths >= len(word) - 3
-                    idx &= lengths <= len(word) + 3
-                    sel = choices[idx]
-                    d = damerau_levenshtein_distance_withNPArray(word, sel)
-                    choice = np.array(keys_raw)[idx][np.argmin(d)]
-                    # choice = difflib.get_close_matches(word, choices)[0]
-                    vector = model[choice]
-                    print compact, word, ' --> ', choice
-                except IndexError:
-                    pass
+            # if vector is None:
+            #     try:
+            #         # word = str(word)
+            #         idx = lengths >= len(word) - 3
+            #         idx &= lengths <= len(word) + 3
+            #         sel = choices[idx]
+            #         d = damerau_levenshtein_distance_ndarray(word, sel)
+            #         choice = np.array(list(keys_raw))[idx][np.argmin(d)]
+            #         # choice = difflib.get_close_matches(word, choices)[0]
+            #         vector = model[choice]
+            #         print(compact, word, ' --> ', choice)
+            #     except IndexError:
+            #         pass
             if vector is None:
                 f += 1
                 continue

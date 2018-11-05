@@ -20,6 +20,7 @@ def prob_words(context, vocab, temperature=1.0):
     """ This calculates a softmax over the vocabulary as a function
     of the dot product of context and word.
     """
+    # vocab = vocab / np.linalg.norm(vocab, axis=1, keepdims=True)
     dot = np.dot(vocab, context)
     prob = _softmax(dot / temperature)
     return prob
@@ -103,7 +104,7 @@ def print_top_words_per_topic(data, top_n=10, do_print=True):
         top_words = [data['vocab'][i].strip().replace(' ', '_') for i in top]
         msg = ' '.join(top_words)
         if do_print:
-            print prefix + msg
+            print(prefix + msg)
         lists.append(top_words)
     return lists
 
