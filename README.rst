@@ -1,5 +1,6 @@
 lda2vec: Tools for interpreting natural language
 =================================================
+This repo is a forked and changed version of the original `LDA2Vec repo <https://github.com/cemoody/lda2vec.git>`_. The code is transferred from Python 2 to Python 3. In preprocessing, the padding and OOV are removed from both input data and vocabulary.
 
 .. image:: http://img.shields.io/badge/license-MIT-blue.svg?style=flat
     :target: https://github.com/cemoody/lda2vec/blob/master/LICENSE
