@@ -3,3 +3,8 @@ numpy>=1.10
 spacy>=0.9
 scipy>=0.16.0
 sklearn
+tqdm
+pandas
+pyxdameraulevenshtein
+gensim
+h5py
